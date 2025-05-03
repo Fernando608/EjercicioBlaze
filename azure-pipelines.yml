@@ -1,0 +1,153 @@
+# Gradle
+# Build your Java project and run tests with Gradle using a Gradle wrapper script.
+# Add steps that analyze code, save build artifacts, deploy, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/languages/java
+
+trigger:
+- main
+
+schedules:
+- cron: '0 2 * * *'
+  displayName: 'Ejecución diaria'
+  branches:
+    include:
+    - main
+  always: true # Ejecutar incluso si no hay cambios en el código
+ 
+variables:
+  # Variables para controlar la ejecución de pruebas (se pueden sobrescribir al iniciar el pipeline)
+  TEST_TAGS: 'regression'  # Por defecto, ejecutar pruebas con tag 'regression'
+  ENVIRONMENT: 'qa'        # Por defecto, usar entorno 'qa'
+  GRADLE_USER_HOME: $(Pipeline.Workspace)/.gradle
+
+
+pool:
+  vmImage: ubuntu-latest
+
+
+stages:
+- stage: Build
+  displayName: 'Build and Test'
+  jobs:
+  - job: BuildAndTest
+    displayName: 'Build and Run Tests'
+    steps:
+         # Configura Java
+    - task: JavaToolInstaller@0
+      inputs:
+        versionSpec: '8'
+        jdkArchitectureOption: 'x64'
+        jdkSourceOption: 'PreInstalled'
+      displayName: 'Set up JDK 8'
+
+          # Caché de Gradle para optimizar la velocidad de build
+    - task: Cache@2
+      inputs:
+        key: 'gradle | "$(Agent.OS)" | **/*.gradle*'
+        restoreKeys: |
+          gradle | "$(Agent.OS)"
+        path: $(GRADLE_USER_HOME)
+      displayName: 'Cache Gradle packages'
+      
+
+          # Configurar las credenciales de Git para acceder al repositorio
+    - task: CmdLine@2
+      inputs:
+        script: |
+          git config --global user.email "pipeline@example.com"
+          git config --global user.name "Azure Pipeline"
+      displayName: 'Configure Git'
+
+          # Instalar Chrome para pruebas con Selenium
+    - task: CmdLine@2
+      inputs:
+        script: |
+          wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+          echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+          google-chrome --version
+      displayName: 'Install Chrome'
+
+      # Instalar ChromeDriver
+    - task: CmdLine@2
+      inputs:
+        script: |
+          CHROME_VERSION=$(google-chrome --version | awk '{print $3}' | cut -d. -f1)
+          CHROMEDRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_VERSION")
+          wget -q "https://chromedriver.storage.googleapis.com/$CHROMEDRIVER_VERSION/chromedriver_linux64.zip"
+          unzip chromedriver_linux64.zip
+          sudo mv chromedriver /usr/local/bin/
+          chromedriver --version
+      displayName: 'Install ChromeDriver'
+
+      # Dar permisos de ejecución al script gradlew
+    - task: CmdLine@2
+      inputs:
+        script: |
+          chmod +x ./gradlew
+      displayName: 'Grant execute permission for gradlew'
+
+
+       # Compilar el proyecto con Gradle
+    - task: Gradle@2
+      inputs:
+        workingDirectory: ''
+        gradleWrapperFile: 'gradlew'
+        gradleOptions: '-Xmx3072m'
+        javaHomeOption: 'JDKVersion'
+        jdkVersionOption: '1.8'
+        jdkArchitectureOption: 'x64'
+        publishJUnitResults: false
+        tasks: 'clean assemble'
+      displayName: 'Build project'
+      
+    # Ejecutar pruebas Serenity con Gradle
+    - task: Gradle@2
+      inputs:
+        workingDirectory: ''
+        gradleWrapperFile: 'gradlew'
+        gradleOptions: '-Xmx3072m'
+        javaHomeOption: 'JDKVersion'
+        jdkVersionOption: '1.8'
+        jdkArchitectureOption: 'x64'
+        publishJUnitResults: true
+        testResultsFiles: '**/TEST-*.xml'
+        tasks: 'test aggregate -Dtags=$(TEST_TAGS) -Denvironment=$(ENVIRONMENT) -Dwebdriver.driver=chrome -Dchrome.switches="--headless,--no-sandbox,--disable-dev-shm-usage"'
+      displayName: 'Run Serenity Tests'
+      
+    # Publicar informes de Serenity
+    - task: PublishTestResults@2
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: '**/TEST-*.xml'
+      displayName: 'Publish Test Results'
+      condition: succeededOrFailed()  # Publicar incluso si las pruebas fallan
+      
+    # Publicar el informe HTML de Serenity como artefacto
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathToPublish: 'target/site/serenity'
+        artifactName: 'serenity-report'
+      displayName: 'Publish Serenity Report'
+      condition: succeededOrFailed()  # Publicar incluso si las pruebas fallan
+      
+    # Enviar notificación por correo (opcional - requiere configuración adicional)
+    - task: SendEmail@1
+      condition: always()
+      inputs:
+        connectedServiceName: 'emailService'
+        subject: 'Test Execution Report - $(Build.BuildNumber)'
+        body: |
+          Pipeline: $(Build.DefinitionName)
+          Result: $(Agent.JobStatus)
+          Build Number: $(Build.BuildNumber)
+          Trigger: $(Build.Reason)
+          
+          Para ver el informe completo de Serenity, accede a:
+          $(System.TeamFoundationCollectionUri)$(System.TeamProject)/_build/results?buildId=$(Build.BuildId)
+        to: 'summerbreak98@hotmail.com'
+      continueOnError: true
+      displayName: 'Send Email Notification'
+
+
