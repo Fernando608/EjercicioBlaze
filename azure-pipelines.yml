@@ -132,22 +132,6 @@ stages:
       displayName: 'Publish Serenity Report'
       condition: succeededOrFailed()  # Publicar incluso si las pruebas fallan
       
-    # Enviar notificación por correo (opcional - requiere configuración adicional)
-    - task: SendEmail@1
-      condition: always()
-      inputs:
-        connectedServiceName: 'emailService'
-        subject: 'Test Execution Report - $(Build.BuildNumber)'
-        body: |
-          Pipeline: $(Build.DefinitionName)
-          Result: $(Agent.JobStatus)
-          Build Number: $(Build.BuildNumber)
-          Trigger: $(Build.Reason)
-          
-          Para ver el informe completo de Serenity, accede a:
-          $(System.TeamFoundationCollectionUri)$(System.TeamProject)/_build/results?buildId=$(Build.BuildId)
-        to: 'summerbreak98@hotmail.com'
-      continueOnError: true
-      displayName: 'Send Email Notification'
+
 
 
