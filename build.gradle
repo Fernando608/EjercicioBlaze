@@ -23,8 +23,8 @@ apply plugin: 'idea'
 apply plugin: "net.serenity-bdd.serenity-gradle-plugin"
 group 'co.com.automatizacionWeb.screenplay'
 
-sourceCompatibility = 17
-targetCompatibility = 17
+sourceCompatibility = 8
+targetCompatibility = 8
 tasks.withType(JavaCompile) {
     options.encoding = 'UTF-8'
 }
@@ -54,7 +54,7 @@ dependencies {
         testImplementation "org.junit.vintage:junit-vintage-engine:${junit_vintage_engine_version}"
         implementation "ch.qos.logback:logback-classic:${logback_classic_version}"
         testImplementation "org.assertj:assertj-core:${assertj_core_version}"
-        implementation 'io.github.bonigarcia:webdrivermanager:5.4.1'
+        implementation 'io.github.bonigarcia:webdrivermanager:5.6.2'
     }
 }
 
